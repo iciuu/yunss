@@ -42,12 +42,13 @@
             <option value="FAILED">已流标</option>
           </select>
         </div>
-        <article v-for="item in freights" :key="item.id" class="list-card" @click="selectFreight(item)">
+        <article v-for="item in freightsPage" :key="item.id" class="list-card" @click="selectFreight(item)">
           <b>{{ item.publishNo }} · {{ item.cargoName }}</b>
           <span>{{ item.originAddress }} → {{ item.destAddress }}</span>
           <small>{{ statusLabel(item.status) }} · {{ item.bidCount }} 个报价 · 底价 ¥{{ item.floorPrice }}</small>
         </article>
         <p v-if="freights.length === 0" class="muted">暂无货源，请发布一条</p>
+        <Pagination v-if="freights.length > pageSize" v-model:page="freightPageNum" v-model:pageSize="pageSize" :total="freights.length" />
       </section>
     </section>
 
@@ -95,7 +96,7 @@
       <table>
         <thead><tr><th>订单号</th><th>货源</th><th>金额</th><th>承运商</th><th>状态</th><th>确认时间</th></tr></thead>
         <tbody>
-          <tr v-for="item in orders" :key="item.id" style="cursor:pointer" @click="showOrderDetail(item)">
+          <tr v-for="item in ordersPage" :key="item.id" style="cursor:pointer" @click="showOrderDetail(item)">
             <td>{{ item.orderNo || item.id }}</td>
             <td>{{ freightMap[item.sourceId]?.publishNo || item.sourceId }}</td>
             <td>¥{{ item.price }}</td>
@@ -106,6 +107,7 @@
         </tbody>
       </table>
       <p v-if="orders.length === 0" class="muted">暂无订单，开标后将自动生成</p>
+      <Pagination v-if="orders.length > pageSize" v-model:page="ordersPageNum" v-model:pageSize="pageSize" :total="orders.length" />
     </section>
 
     <!-- 订单详情弹窗 -->
@@ -132,9 +134,10 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import StatCard from '../../components/StatCard.vue'
+import Pagination from '../../components/Pagination.vue'
 import { api, clearSession, post } from '../../api/client'
 
 const router = useRouter()
@@ -164,6 +167,20 @@ const freight = reactive({
   remark: '注意防雨'
 })
 
+// 分页状态
+const pageSize = ref(10)
+const freightPageNum = ref(1)
+const ordersPageNum = ref(1)
+
+const freightsPage = computed(() => {
+  const s = (freightPageNum.value - 1) * pageSize.value
+  return freights.value.slice(s, s + pageSize.value)
+})
+const ordersPage = computed(() => {
+  const s = (ordersPageNum.value - 1) * pageSize.value
+  return orders.value.slice(s, s + pageSize.value)
+})
+
 async function loadDashboard() {
   Object.assign(dashboard, await api('/dashboard/shipper'))
 }
@@ -171,7 +188,7 @@ async function loadDashboard() {
 async function loadFreights() {
   const params = statusFilter.value ? `?status=${statusFilter.value}` : ''
   freights.value = await api(`/freight/list${params}`)
-  // 建立货源ID → 货源单号映射
+  freightPageNum.value = 1
   for (const f of freights.value) {
     freightMap[f.id] = { publishNo: f.publishNo, cargoName: f.cargoName }
   }
@@ -179,11 +196,10 @@ async function loadFreights() {
 
 async function loadOrders() {
   orders.value = await api('/order/list')
-  // 收集承运商名称
+  ordersPageNum.value = 1
   for (const order of orders.value) {
     if (order.carrierId && !carrierNames[order.carrierId]) {
       try {
-        // 从报价数据反查承运商名 — 跨租户只能看到脱敏信息
         carrierNames[order.carrierId] = order.carrierId ? `承运商 #${order.carrierId}` : '-'
       } catch (_) {}
     }

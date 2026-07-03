@@ -35,12 +35,13 @@
     <section class="grid two">
       <section class="panel">
         <h2>可参与货源</h2>
-        <article v-for="item in market" :key="item.id" class="list-card" @click="selected = item">
+        <article v-for="item in marketPage" :key="item.id" class="list-card" @click="selected = item">
           <b>{{ item.cargoName }} · {{ item.companyName }}</b>
           <span>{{ item.originAddress }} → {{ item.destAddress }}</span>
           <small>截止 {{ format(item.deadline) }} · 报价 {{ item.bidCount ?? '保密' }}</small>
         </article>
         <p v-if="market.length === 0" class="muted">暂无可用货源</p>
+        <Pagination v-if="market.length > pageSize" v-model:page="marketPageNum" v-model:pageSize="pageSize" :total="market.length" />
       </section>
 
       <form class="panel" @submit.prevent="submitBid">
@@ -59,7 +60,7 @@
       <table>
         <thead><tr><th>货源 ID</th><th>金额</th><th>状态</th><th>时间</th></tr></thead>
         <tbody>
-          <tr v-for="item in myBids" :key="item.id">
+          <tr v-for="item in myBidsPage" :key="item.id">
             <td>{{ item.freightId }}</td>
             <td>¥{{ item.amount }}</td>
             <td>{{ statusLabel(item.status) }}</td>
@@ -68,6 +69,7 @@
         </tbody>
       </table>
       <p v-if="myBids.length === 0" class="muted">暂无报价记录</p>
+      <Pagination v-if="myBids.length > pageSize" v-model:page="myBidsPageNum" v-model:pageSize="pageSize" :total="myBids.length" />
     </section>
 
     <!-- 订单管理 -->
@@ -76,7 +78,7 @@
       <table>
         <thead><tr><th>订单号</th><th>金额</th><th>状态</th><th>创建时间</th><th>操作</th></tr></thead>
         <tbody>
-          <tr v-for="item in orders" :key="item.id" style="cursor:pointer" @click="showOrderDetail(item)">
+          <tr v-for="item in ordersPage" :key="item.id" style="cursor:pointer" @click="showOrderDetail(item)">
             <td>{{ item.orderNo || item.id }}</td>
             <td>¥{{ item.price }}</td>
             <td>{{ orderStatusLabel(item.status) }}</td>
@@ -91,6 +93,7 @@
         </tbody>
       </table>
       <p v-if="orders.length === 0" class="muted">暂无订单</p>
+      <Pagination v-if="orders.length > pageSize" v-model:page="ordersPageNum" v-model:pageSize="pageSize" :total="orders.length" />
     </section>
 
     <!-- 订单详情弹窗 -->
@@ -113,7 +116,6 @@
           <div><b>确认时间</b><p>{{ orderDetail.confirmTime ? format(orderDetail.confirmTime) : '-' }}</p></div>
           <div><b>完成时间</b><p>{{ orderDetail.finishedTime ? format(orderDetail.finishedTime) : '-' }}</p></div>
         </div>
-        <!-- 关联货源信息 -->
         <div v-if="orderFreight" style="margin-top:16px;padding-top:16px;border-top:1px solid #e6edf7">
           <h3>货源信息</h3>
           <div class="form-grid">
@@ -130,9 +132,10 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import StatCard from '../../components/StatCard.vue'
+import Pagination from '../../components/Pagination.vue'
 import { api, clearSession, post } from '../../api/client'
 
 const router = useRouter()
@@ -148,20 +151,42 @@ const bid = reactive({ amount: 4800, remark: '含9%增值税', attachment: '' })
 const orderDetail = ref(null)
 const orderFreight = ref(null)
 
+// 分页状态
+const pageSize = ref(10)
+const marketPageNum = ref(1)
+const myBidsPageNum = ref(1)
+const ordersPageNum = ref(1)
+
+const marketPage = computed(() => {
+  const s = (marketPageNum.value - 1) * pageSize.value
+  return market.value.slice(s, s + pageSize.value)
+})
+const myBidsPage = computed(() => {
+  const s = (myBidsPageNum.value - 1) * pageSize.value
+  return myBids.value.slice(s, s + pageSize.value)
+})
+const ordersPage = computed(() => {
+  const s = (ordersPageNum.value - 1) * pageSize.value
+  return orders.value.slice(s, s + pageSize.value)
+})
+
 async function loadDashboard() {
   Object.assign(dashboard, await api('/dashboard/carrier'))
 }
 
 async function loadMarket() {
   market.value = await api('/bid/market')
+  marketPageNum.value = 1
 }
 
 async function loadMyBids() {
   myBids.value = await api('/bid/my')
+  myBidsPageNum.value = 1
 }
 
 async function loadOrders() {
   orders.value = await api('/order/list')
+  ordersPageNum.value = 1
 }
 
 async function loadMessages() {
@@ -199,7 +224,6 @@ async function cancelOrder(item) {
 async function showOrderDetail(item) {
   orderDetail.value = await api(`/order/${item.id}`)
   orderFreight.value = null
-  // 尝试加载关联货源信息（承运商视角）
   try {
     orderFreight.value = await api(`/bid/freight/${item.sourceId}`)
   } catch (_) { /* 可能已过期或无权限，忽略 */ }

@@ -51,7 +51,7 @@
       <table>
         <thead><tr><th>订单号</th><th>租户</th><th>金额</th><th>状态</th><th>创建时间</th></tr></thead>
         <tbody>
-          <tr v-for="item in orders" :key="item.id" style="cursor:pointer" @click="showOrderDetail(item)">
+          <tr v-for="item in ordersPage" :key="item.id" style="cursor:pointer" @click="showOrderDetail(item)">
             <td>{{ item.orderNo || item.id }}</td>
             <td>{{ item.tenantId }}</td>
             <td>¥{{ item.price }}</td>
@@ -61,6 +61,7 @@
         </tbody>
       </table>
       <p v-if="orders.length === 0" class="muted">暂无订单</p>
+      <Pagination v-if="orders.length > pageSize" v-model:page="ordersPageNum" v-model:pageSize="pageSize" :total="orders.length" />
     </section>
 
     <!-- 订单详情弹窗 -->
@@ -92,9 +93,10 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import StatCard from '../../components/StatCard.vue'
+import Pagination from '../../components/Pagination.vue'
 import { api, clearSession } from '../../api/client'
 
 const router = useRouter()
@@ -103,7 +105,14 @@ const tenants = ref([])
 const carriers = ref([])
 const orders = ref([])
 const orderDetail = ref(null)
-const freightMap = reactive({})
+
+// 分页状态
+const pageSize = ref(10)
+const ordersPageNum = ref(1)
+const ordersPage = computed(() => {
+  const s = (ordersPageNum.value - 1) * pageSize.value
+  return orders.value.slice(s, s + pageSize.value)
+})
 
 onMounted(async () => {
   Object.assign(dashboard, await api('/dashboard/platform'))
